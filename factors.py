@@ -28,10 +28,32 @@ def get_price(ticker):
 
 # Return (portfolio, factors, rfr)
 def resample(portfolio, factors):
-    print("******", portfolio.index.freqstr, factors.index.freqstr)
-    if ftk.periodicity(portfolio) > ftk.periodicity(factors):
-        portfolio = portfolio.resample(
-            factors.index.freqstr).aggregate(ftk.compound_return)
+    # Ensure both have DatetimeIndex
+    if not isinstance(portfolio.index, pd.DatetimeIndex):
+        portfolio.index = pd.to_datetime(portfolio.index)
+    if not isinstance(factors.index, pd.DatetimeIndex):
+        factors.index = pd.to_datetime(factors.index)
+
+    # Handle missing frequencies to prevent ftk.periodicity from crashing
+    if portfolio.index.freqstr is None:
+        portfolio.index.freq = pd.infer_freq(portfolio.index)
+    if factors.index.freqstr is None:
+        factors.index.freq = pd.infer_freq(factors.index)
+
+    # Use default frequency if inference fails
+    p_freq = portfolio.index.freqstr if portfolio.index.freqstr else 'B'
+    f_freq = factors.index.freqstr if factors.index.freqstr else 'B'
+
+    try:
+        # Standardize frequencies if mismatch occurs
+        p_period = ftk.periodicity(portfolio) if portfolio.index.freqstr else 252
+        f_period = ftk.periodicity(factors) if factors.index.freqstr else 252
+        
+        if p_period > f_period:
+            portfolio = portfolio.resample(f_freq).aggregate(ftk.compound_return)
+    except:
+        # If periodicity fails, proceed with raw merged data
+        pass
 
     merged = pd.merge(portfolio, factors, left_index=True, right_index=True)
     return merged.iloc[:, 0], merged.iloc[:, 1:-1], merged.iloc[:, -1]
