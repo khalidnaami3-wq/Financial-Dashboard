@@ -13,7 +13,9 @@ def get_price(tickers):
             st.stop()
         
         # Ensure the index is a DatetimeIndex to support resampling later
-        if not isinstance(df.index, pd.DatetimeIndex):
+        if hasattr(df.index, 'to_timestamp'):
+            df.index = df.index.to_timestamp()
+        elif not isinstance(df.index, pd.DatetimeIndex):
             df.index = pd.to_datetime(df.index)
         
         # Clean up any invalid dates
@@ -90,6 +92,8 @@ try:
 except Exception as e:
     st.error(f"Error processing time-series data: {e}. One or more tickers may have insufficient historical records.")
     st.stop()
+
+with st.sidebar:
     rfr_annualized = st.slider(
         'Risk-free rate (%)', value=2., min_value=0.0, max_value=10., step=0.1
     )
