@@ -43,20 +43,6 @@ if 'price' not in st.session_state:
 
 with st.sidebar:
 
-    with st.form("my_form"):
-        ticker = st.text_input('Search for a ticker (e.g. SPY, QQQ, TSLA)', 'ARKK')
-        submitted = st.form_submit_button("Search")
-        if submitted:
-            try:
-                price = get_price(ticker)
-                if price is None or price.empty:
-                    st.error(f"No data found for ticker '{ticker}'. This ticker might not exist or lacks historical data.")
-                    st.session_state.price = None
-                else:
-                    st.session_state.price = price
-            except Exception as e:
-                st.error(f"Error fetching data for '{ticker}': {e}")
-                st.session_state.price = None
 
     dataset = st.selectbox(
         'Select a factor',
@@ -66,9 +52,24 @@ with st.sidebar:
 
     mom = st.toggle('Add momentum factor')
 
-portfolio = st.session_state.price
-
 st.title('Fama–French Factor Model')
+
+with st.form("my_form"):
+    ticker = st.text_input('Search for a ticker (e.g. SPY, QQQ, TSLA)', 'ARKK')
+    submitted = st.form_submit_button("Search")
+    if submitted:
+        try:
+            price = get_price(ticker)
+            if price is None or price.empty:
+                st.error(f"No data found for ticker '{ticker}'. This ticker might not exist or lacks historical data.")
+                st.session_state.price = None
+            else:
+                st.session_state.price = price
+        except Exception as e:
+            st.error(f"Error fetching data for '{ticker}': {e}")
+            st.session_state.price = None
+
+portfolio = st.session_state.price
 
 if portfolio is not None:
     st.header(portfolio.name)
@@ -132,6 +133,6 @@ if portfolio is not None:
     st.line_chart(ftk.return_to_price(combined))
 else:
     st.write(
-        'Please search a ticker on the sidebar e.g. `SPY`, `QQQ`, `ARKK`, `BRK-B`')
+        'Please search a ticker in the box above (e.g. `SPY`, `QQQ`, `ARKK`, `BRK-B`) to get started.')
 
 st.markdown(open('data/signature.md').read())
