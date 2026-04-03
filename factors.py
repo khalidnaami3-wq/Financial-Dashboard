@@ -29,16 +29,31 @@ def get_price(ticker):
 # Return (portfolio, factors, rfr)
 def resample(portfolio, factors):
     # Ensure both have DatetimeIndex
-    if not isinstance(portfolio.index, pd.DatetimeIndex):
+    if hasattr(portfolio.index, 'to_timestamp'):
+        portfolio.index = portfolio.index.to_timestamp()
+    elif not isinstance(portfolio.index, pd.DatetimeIndex):
         portfolio.index = pd.to_datetime(portfolio.index)
-    if not isinstance(factors.index, pd.DatetimeIndex):
+
+    if hasattr(factors.index, 'to_timestamp'):
+        factors.index = factors.index.to_timestamp()
+    elif not isinstance(factors.index, pd.DatetimeIndex):
         factors.index = pd.to_datetime(factors.index)
 
     # Handle missing frequencies to prevent ftk.periodicity from crashing
     if portfolio.index.freqstr is None:
-        portfolio.index.freq = pd.infer_freq(portfolio.index)
+        inferred = pd.infer_freq(portfolio.index)
+        try:
+            portfolio.index.freq = inferred if inferred else 'B'
+        except:
+            # Fallback for complex indices
+            pass
+            
     if factors.index.freqstr is None:
-        factors.index.freq = pd.infer_freq(factors.index)
+        inferred = pd.infer_freq(factors.index)
+        try:
+            factors.index.freq = inferred if inferred else 'B'
+        except:
+            pass
 
     # Use default frequency if inference fails
     p_freq = portfolio.index.freqstr if portfolio.index.freqstr else 'B'
@@ -63,7 +78,11 @@ def get_bestfit(portfolio):
 
     def analyse(portfolio, model):        
         portfolio, factors, rfr = resample(portfolio, get_factors(model, mom))
-        return ftk.rsquared(portfolio - rfr, factors, adjusted=True)
+        # Ensure frequency is preserved before rsquared call
+        excess_returns = portfolio - rfr
+        if portfolio.index.freqstr:
+            excess_returns.index.freq = portfolio.index.freq
+        return ftk.rsquared(excess_returns, factors, adjusted=True)
 
     models = get_datasets()
     return pd.Series([analyse(portfolio, model) for model in models], index=models).sort_values(ascending=False)
@@ -111,7 +130,21 @@ if portfolio is not None:
     factors = get_factors(dataset, mom)
 
     portfolio, factors, rfr = resample(portfolio, factors)
-    betas = ftk.beta(portfolio - rfr, factors)
+    
+    # Ensure frequency is preserved for ftk.beta (subtraction can strip it)
+    excess_returns = portfolio - rfr
+    if portfolio.index.freqstr:
+        try:
+            excess_returns.index.freq = portfolio.index.freq
+        except:
+            pass
+    if factors.index.freqstr is None:
+        try:
+            factors.index.freq = pd.infer_freq(factors.index) if pd.infer_freq(factors.index) else 'B'
+        except:
+            pass
+            
+    betas = ftk.beta(excess_returns, factors)
 
     attribution = pd.concat([betas * factors, rfr], axis=1)
     explained = attribution.sum(axis=1)
