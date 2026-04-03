@@ -1,4 +1,3 @@
-import setuptools
 import calendar
 import pandas as pd
 import streamlit as st
