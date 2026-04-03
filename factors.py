@@ -1,4 +1,3 @@
-import setuptools
 import pandas as pd
 import streamlit as st
 import toolkit as ftk
