@@ -44,13 +44,19 @@ if 'price' not in st.session_state:
 with st.sidebar:
 
     with st.form("my_form"):
-        ticker = st.text_input('Ticker', 'ARKK')
+        ticker = st.text_input('Search for a ticker (e.g. SPY, QQQ, TSLA)', 'ARKK')
         submitted = st.form_submit_button("Search")
         if submitted:
             try:
-                st.session_state.price = get_price(ticker)
-            except:
-                st.error('Invalid ticker')
+                price = get_price(ticker)
+                if price is None or price.empty:
+                    st.error(f"No data found for ticker '{ticker}'. This ticker might not exist or lacks historical data.")
+                    st.session_state.price = None
+                else:
+                    st.session_state.price = price
+            except Exception as e:
+                st.error(f"Error fetching data for '{ticker}': {e}")
+                st.session_state.price = None
 
     dataset = st.selectbox(
         'Select a factor',
