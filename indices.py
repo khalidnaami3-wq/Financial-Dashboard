@@ -54,7 +54,11 @@ with st.sidebar:
 
 # Adjust the prices
 def getFX(c):
-    return px.loc[:, f'{data.loc[c].Currency}=X']
+    ticker = f'{data.loc[c].Currency}=X'
+    if ticker in px.columns:
+        return px.loc[:, ticker]
+    else:
+        return pd.Series(1.0, index=px.index)
 
 usd = pd.Series(np.ones(len(px)), index=px.index)
 px['USD=X'] = usd
