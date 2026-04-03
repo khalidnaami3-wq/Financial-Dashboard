@@ -11,6 +11,14 @@ def get_price(tickers):
             # Handle empty data scenario
             st.error("Financial data could not be retrieved. Please verify the tickers in the URL.")
             st.stop()
+        
+        # Ensure the index is a DatetimeIndex to support resampling later
+        if not isinstance(df.index, pd.DatetimeIndex):
+            df.index = pd.to_datetime(df.index)
+        
+        # Clean up any invalid dates
+        df = df[df.index.notnull()]
+        
         return df
     except Exception as e:
         # Catch connection failures or other API errors
@@ -66,14 +74,22 @@ with st.sidebar:
     tickers = funds + [benchmark]
 
 price = get_price(tickers)
-periods = price.resample('M').last().to_period()
 
-with st.sidebar:
-    horizon = st.select_slider(
-        'Sample period',
-        options=periods.index,
-        value=[periods.index[-60], periods.index[-1]]
-    )
+try:
+    # Resample to monthly periods for analysis
+    periods = price.resample('M').last().to_period()
+    
+    with st.sidebar:
+        # Default fallback if the data is too short for the 60-month default
+        start_idx = -60 if len(periods.index) > 60 else 0
+        horizon = st.select_slider(
+            'Sample period',
+            options=periods.index,
+            value=[periods.index[start_idx], periods.index[-1]]
+        )
+except Exception as e:
+    st.error(f"Error processing time-series data: {e}. One or more tickers may have insufficient historical records.")
+    st.stop()
     rfr_annualized = st.slider(
         'Risk-free rate (%)', value=2., min_value=0.0, max_value=10., step=0.1
     )
