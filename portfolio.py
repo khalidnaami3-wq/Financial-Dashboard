@@ -26,11 +26,14 @@ def get_data(tickers_dict):
         if px.empty:
             return pd.DataFrame()
         
-        # Ensure the index is a DatetimeIndex before resampling
-        if not isinstance(px.index, pd.DatetimeIndex):
-            px.index = pd.to_datetime(px.index)
-            
-        return px.resample("M").last().pct_change().dropna().to_period("M")
+        # Standardize the index to DatetimeIndex and remove duplicates
+        if hasattr(px.index, 'to_timestamp'):
+            px.index = px.index.to_timestamp()
+        px.index = pd.to_datetime(px.index)
+        px = px[~px.index.duplicated(keep='first')]
+        
+        # Resample to monthly returns with a consistent frequency grid (Month End)
+        return px.resample("ME").last().pct_change().dropna().to_period("M")
     except Exception as e:
         # Gracefully handle API failures or data parsing errors
         st.error(f"Error fetching data: {e}")
@@ -72,8 +75,14 @@ if len(assets) < 2:
 returns = data[assets]
 begin = horizon[0]
 end = horizon[-1]
-cov = ftk.covariance(returns[begin:end], annualize=True)
-er = ftk.compound_return(returns[begin:end], annualize=True)
+returns_subset = returns[begin:end]
+
+if returns_subset.empty:
+    st.error("The selected asset classes have no common historical data within this specific timeframe. Please try a different sample period.")
+    st.stop()
+    
+cov = ftk.covariance(returns_subset, annualize=True)
+er = ftk.compound_return(returns_subset, annualize=True)
 
 wtgs = pd.DataFrame({'Equal Weight': ftk.equal_weight(er),
                      'Inverse Volatility': ftk.inverse_vol(cov),
