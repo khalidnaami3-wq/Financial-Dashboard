@@ -21,12 +21,27 @@ tickers = {
 
 @st.cache_data(ttl=3600)
 def get_data(tickers_dict):
-    px = ftk.get_yahoo_bulk(tickers_dict.keys()).rename(columns=tickers_dict)
-    return px.resample("M").last().pct_change().dropna().to_period("M")
+    try:
+        px = ftk.get_yahoo_bulk(tickers_dict.keys()).rename(columns=tickers_dict)
+        if px.empty:
+            return pd.DataFrame()
+        
+        # Ensure the index is a DatetimeIndex before resampling
+        if not isinstance(px.index, pd.DatetimeIndex):
+            px.index = pd.to_datetime(px.index)
+            
+        return px.resample("M").last().pct_change().dropna().to_period("M")
+    except Exception as e:
+        # Gracefully handle API failures or data parsing errors
+        st.error(f"Error fetching data: {e}")
+        return pd.DataFrame()
 
 
 # DataFrame of asset class returns
 data = get_data(tickers)
+if data.empty:
+    st.warning("No data found for the selected asset classes. Please check your internet connection or ticker symbols.")
+    st.stop()
 
 with st.sidebar:
     horizon = st.select_slider(
