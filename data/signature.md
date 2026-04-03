@@ -1,1 +1,1 @@
-Visit my [GitHub](https://github.com/khalidnaami3-wq) repository for source code and more apps like this.
+Visit my [GitHub](https://github.com/khalidnaami3-wq) repository or [Streamlit](https://share.streamlit.io/user/khalidnaami3-wq) profile for source code and more apps like this.
