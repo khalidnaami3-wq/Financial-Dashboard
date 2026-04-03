@@ -4,3 +4,5 @@ fintoolkit
 numpy
 pandas
 altair
+statsmodels
+scipy
