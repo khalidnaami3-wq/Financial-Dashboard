@@ -35,21 +35,35 @@ def format_table(s):
     return tbl.style.format('{0:.2%}')    
 
 # Pre-process the data
-params = st.query_params
-url = "/?fund=PRCOX&fund=GQEFX&fund=STSEX&fund=NUESX&fund=VTCLX&fund=CAPEX&fund=USBOX&fund=VPMCX&fund=JDEAX&fund=DFUSX&fund=GALLX&benchmark=%5ESP500TR"
-
 st.title('Peer Group Analysis')
-if 'fund' not in params or 'benchmark' not in params or len(params['fund']) < 1 and len(params['benchmark']) != 1:
-    st.error('ERROR: No fund or benchmark specified. Please try the following URL.')    
-    st.markdown(f"""
-    Click the following link and replace the tickers with your funds and benchmark.
-                
-    > <a href="{url}" target="_self">{url}</a>
-    """, unsafe_allow_html=True)
-    st.stop()
 
-tickers = params.get_all('fund')
-tickers.extend(params.get_all('benchmark'))
+# Default funds and benchmark for cases where query params are missing
+DEFAULT_FUNDS = ['PRCOX', 'GQEFX', 'STSEX', 'NUESX', 'VTCLX', 'CAPEX', 'USBOX', 'VPMCX', 'JDEAX', 'DFUSX', 'GALLX']
+DEFAULT_BENCHMARK = '^SP500TR'
+
+# Get initial values from query parameters if available
+query_funds = st.query_params.get_all('fund')
+query_benchmark = st.query_params.get('benchmark', DEFAULT_BENCHMARK)
+
+if not query_funds:
+    query_funds = DEFAULT_FUNDS
+
+with st.sidebar:
+    st.header("Search Parameters")
+    with st.expander("Ticker Selection", expanded=True):
+        fund_list = st.text_area(
+            'Funds tickers (one per line)', 
+            value="\n".join(query_funds),
+            height=200
+        )
+        benchmark_ticker = st.text_input(
+            'Benchmark ticker', 
+            value=query_benchmark
+        )
+    
+    funds = [f.strip() for f in fund_list.split("\n") if f.strip()]
+    benchmark = benchmark_ticker.strip()
+    tickers = funds + [benchmark]
 
 price = get_price(tickers)
 periods = price.resample('M').last().to_period()
