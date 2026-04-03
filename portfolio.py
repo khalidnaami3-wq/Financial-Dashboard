@@ -20,16 +20,13 @@ tickers = {
 
 
 @st.cache_data(ttl=3600)
-def get_data():
-    px = ftk.get_yahoo_bulk(tickers.keys()).rename(columns=tickers)
+def get_data(tickers_dict):
+    px = ftk.get_yahoo_bulk(tickers_dict.keys()).rename(columns=tickers_dict)
     return px.resample("M").last().pct_change().dropna().to_period("M")
 
 
-if "data" not in st.session_state:
-    st.session_state.data = get_data()
-
 # DataFrame of asset class returns
-data = st.session_state.data
+data = get_data(tickers)
 
 with st.sidebar:
     horizon = st.select_slider(
@@ -52,6 +49,11 @@ assets = st.multiselect("Select asset classes",
 st.write(f"From {horizon[0]} to {horizon[1]}")
 
 # Subset of assets and horizon
+assets = [a for a in assets if a in data.columns]
+if len(assets) < 2:
+    st.warning("Please select at least two asset classes that are currently available in the dataset.")
+    st.stop()
+
 returns = data[assets]
 begin = horizon[0]
 end = horizon[-1]
