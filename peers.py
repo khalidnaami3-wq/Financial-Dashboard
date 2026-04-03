@@ -5,7 +5,17 @@ import toolkit as ftk
 
 @st.cache_data(ttl=3600)
 def get_price(tickers):
-    return ftk.get_yahoo_bulk(tickers, period='20Y')
+    try:
+        df = ftk.get_yahoo_bulk(tickers, period='20Y')
+        if df is None or df.empty:
+            # Handle empty data scenario
+            st.error("Financial data could not be retrieved. Please verify the tickers in the URL.")
+            st.stop()
+        return df
+    except Exception as e:
+        # Catch connection failures or other API errors
+        st.error(f"Failed to fetch market data from Yahoo Finance: {e}")
+        st.stop()
 
 def get_rolling(df, annualize):    
     n = len(df) // 12
