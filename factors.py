@@ -15,7 +15,15 @@ def get_factors(dataset, mom):
 
 @st.cache_data(ttl=60)
 def get_price(ticker):
-    return ftk.price_to_return(ftk.get_yahoo(ticker)).asfreq("B")
+    try:
+        raw_price = ftk.get_yahoo(ticker)
+        if raw_price is None or raw_price.empty:
+            return pd.DataFrame()
+        return ftk.price_to_return(raw_price).asfreq("B")
+    except Exception as e:
+        # Catch unexpected errors during data retrieval or calculation
+        st.error(f"Error fetching data for ticker {ticker}: {e}")
+        return pd.DataFrame()
 
 
 # Return (portfolio, factors, rfr)
