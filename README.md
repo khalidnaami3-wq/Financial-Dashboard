@@ -1,6 +1,6 @@
 # Streamlit web apps using Financial Toolkit
 
-This repository contains several web apps that demonstrate common use cases in investment management, leveraging the [Financial Toolkit](https://github.com/chris-kc-cheng/financial-toolkit).
+This repository contains several web apps that demonstrate common use cases in investment management, leveraging the [Financial Toolkit](https://github.com/khalidnaami3-wq).
 
 ## 🚀 Getting Started
 
@@ -48,28 +48,28 @@ _Alternatively, on Windows, you can just double-click the `run.bat` file._
 ### 1. Market Index Data (`indices.py`)
 
 Retrieves data on major equity indices and currencies.
-[View App](https://ftk-indices.streamlit.app/)
+[View App](https://financial-dashboard-analysis.streamlit.app/indices)
 
 ### 2. Fama-French Factor Analysis (`factors.py`)
 
 Analyzes fund factor loadings using the Fama-French model.
-[View App](https://ftk-factors.streamlit.app/)
+[View App](https://financial-dashboard-analysis.streamlit.app/factors)
 
 ### 3. Portfolio Optimization (`portfolio.py`)
 
 Compares risk–reward profiles of various weighting schemes.
-[View App](https://ftk-portfolio-optimization.streamlit.app/)
+[View App](https://financial-dashboard-analysis.streamlit.app/portfolio)
 
 ### 4. Peer Group Analysis (`peers.py`)
 
 Compares fund performance against benchmarks and peers.
-[View App](https://ftk-peers.streamlit.app/)
+[View App](https://financial-dashboard-analysis.streamlit.app/peers)
 
 ### 5. Option Strategies (`options.py`)
 
 Calculates values and Greeks for various option strategies.
-[View App](https://ftk-options.streamlit.app/)
+[View App](https://financial-dashboard-analysis.streamlit.app/options)
 
 ---
 
-Visit my GitHub repository for source code and more apps like this: https://github.com/khalidnaami3-wq.
+Visit my [GitHub](https://github.com/khalidnaami3-wq) repository or [Streamlit](https://share.streamlit.io/user/khalidnaami3-wq) profile for source code and more apps like this.
