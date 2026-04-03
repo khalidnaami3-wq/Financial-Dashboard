@@ -12,13 +12,11 @@ def get_price(tickers):
             st.error("Financial data could not be retrieved. Please verify the tickers in the URL.")
             st.stop()
         
-        # Ensure the index is a DatetimeIndex to support resampling later
+        # Standardize the index to DatetimeIndex and remove duplicates
         if hasattr(df.index, 'to_timestamp'):
             df.index = df.index.to_timestamp()
-        elif not isinstance(df.index, pd.DatetimeIndex):
-            df.index = pd.to_datetime(df.index)
-        
-        # Clean up any invalid dates
+        df.index = pd.to_datetime(df.index)
+        df = df[~df.index.duplicated(keep='first')]
         df = df[df.index.notnull()]
         
         return df
@@ -101,7 +99,10 @@ with st.sidebar:
 # Process the data
 rtn = ftk.price_to_return(price.resample('M').last())[horizon[0] : horizon[1]]
 rtn['RF'] = (1 + rfr_annualized / 100) ** (1 / 12) - 1 # M
-rtn = rtn.dropna(axis=1)
+rtn = rtn.dropna(axis=1).dropna()
+if rtn.empty:
+    st.error("No common historical data found for the selected tickers. One or more tickers may have a very short track record.")
+    st.stop()
 
 funds = rtn.iloc[:, :-2]
 benchmark = rtn.iloc[:, -2]
