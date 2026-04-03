@@ -9,6 +9,13 @@ import toolkit as ftk
 def get_data():
     data = pd.read_csv('data/indices.csv', index_col=0)
     px = ftk.get_yahoo_bulk(data.index, '2y')
+    
+    # Ensure index is DatetimeIndex and remove duplicates for stability
+    if hasattr(px.index, 'to_timestamp'):
+        px.index = px.index.to_timestamp()
+    px.index = pd.to_datetime(px.index)
+    px = px[~px.index.duplicated(keep='first')]
+    
     return data, px
 
 
