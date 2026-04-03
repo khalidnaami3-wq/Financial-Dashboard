@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import streamlit as st
 import toolkit as ftk
 
@@ -10,7 +11,12 @@ def get_datasets():
 
 @st.cache_data(ttl=3600)
 def get_factors(dataset, mom):
-    return ftk.get_famafrench_factors(dataset, mom)
+    factors = ftk.get_famafrench_factors(dataset, mom)
+    # Return raw factors (DatetimeIndex) to allow resample() to handle normalization
+    if hasattr(factors.index, 'to_timestamp'):
+        factors.index = factors.index.to_timestamp()
+    factors.index = pd.to_datetime(factors.index)
+    return factors
 
 
 @st.cache_data(ttl=60)
@@ -19,58 +25,45 @@ def get_price(ticker):
         raw_price = ftk.get_yahoo(ticker)
         if raw_price is None or raw_price.empty:
             return pd.DataFrame()
-        return ftk.price_to_return(raw_price).asfreq("B")
+        # Return portfolio returns as originally intended
+        return ftk.price_to_return(raw_price)
     except Exception as e:
-        # Catch unexpected errors during data retrieval or calculation
         st.error(f"Error fetching data for ticker {ticker}: {e}")
         return pd.DataFrame()
 
 
-# Return (portfolio, factors, rfr)
-def resample(portfolio, factors):
-    # Ensure both have DatetimeIndex
-    if hasattr(portfolio.index, 'to_timestamp'):
-        portfolio.index = portfolio.index.to_timestamp()
-    elif not isinstance(portfolio.index, pd.DatetimeIndex):
-        portfolio.index = pd.to_datetime(portfolio.index)
+# Return (portfolio_returns, factors, rfr)
+def resample(portfolio_returns, factors):
+    # Ensure both are DatetimeIndex and deduplicated
+    def sanitize(df):
+        if hasattr(df.index, 'to_timestamp'):
+            df.index = df.index.to_timestamp()
+        df.index = pd.to_datetime(df.index)
+        return df[~df.index.duplicated(keep='first')]
 
-    if hasattr(factors.index, 'to_timestamp'):
-        factors.index = factors.index.to_timestamp()
-    elif not isinstance(factors.index, pd.DatetimeIndex):
-        factors.index = pd.to_datetime(factors.index)
+    portfolio_returns = sanitize(portfolio_returns)
+    factors = sanitize(factors)
 
-    # Handle missing frequencies to prevent ftk.periodicity from crashing
-    if portfolio.index.freqstr is None:
-        inferred = pd.infer_freq(portfolio.index)
-        try:
-            portfolio.index.freq = inferred if inferred else 'B'
-        except:
-            # Fallback for complex indices
-            pass
-            
-    if factors.index.freqstr is None:
-        inferred = pd.infer_freq(factors.index)
-        try:
-            factors.index.freq = inferred if inferred else 'B'
-        except:
-            pass
+    # Normalize Kenneth French factors to Month-End (ME)
+    factors.index = factors.index.to_period('M').to_timestamp('M')
 
-    # Use default frequency if inference fails
-    p_freq = portfolio.index.freqstr if portfolio.index.freqstr else 'B'
-    f_freq = factors.index.freqstr if factors.index.freqstr else 'B'
-
+    # Aggregatively resample daily returns to monthly returns using compounding
+    # Periodicity > 12 means higher frequency than monthly
     try:
-        # Standardize frequencies if mismatch occurs
-        p_period = ftk.periodicity(portfolio) if portfolio.index.freqstr else 252
-        f_period = ftk.periodicity(factors) if factors.index.freqstr else 252
-        
-        if p_period > f_period:
-            portfolio = portfolio.resample(f_freq).aggregate(ftk.compound_return)
+        if ftk.periodicity(portfolio_returns) > 12:
+            portfolio_returns = portfolio_returns.resample('ME').aggregate(ftk.compound_return)
+        else:
+            portfolio_returns.index = portfolio_returns.index.to_period('M').to_timestamp('M')
     except:
-        # If periodicity fails, proceed with raw merged data
-        pass
+        portfolio_returns.index = portfolio_returns.index.to_period('M').to_timestamp('M')
 
-    merged = pd.merge(portfolio, factors, left_index=True, right_index=True)
+    # Merge on Month-End (ME) to ensure alignment
+    merged = pd.merge(portfolio_returns, factors, left_index=True, right_index=True).dropna()
+
+    # Convert to PeriodIndex('M') - this is the MOST ROBUST for Fama-French analytics.
+    # It removes the need for manual frequency assignment and handles gaps gracefully.
+    merged.index = merged.index.to_period('M')
+    
     return merged.iloc[:, 0], merged.iloc[:, 1:-1], merged.iloc[:, -1]
 
 @st.cache_data(ttl=60)
@@ -78,11 +71,9 @@ def get_bestfit(portfolio):
 
     def analyse(portfolio, model):        
         portfolio, factors, rfr = resample(portfolio, get_factors(model, mom))
-        # Ensure frequency is preserved before rsquared call
-        excess_returns = portfolio - rfr
-        if portfolio.index.freqstr:
-            excess_returns.index.freq = portfolio.index.freq
-        return ftk.rsquared(excess_returns, factors, adjusted=True)
+        if portfolio.empty or factors.empty:
+            return 0.0
+        return ftk.rsquared(portfolio - rfr, factors, adjusted=True)
 
     models = get_datasets()
     return pd.Series([analyse(portfolio, model) for model in models], index=models).sort_values(ascending=False)
@@ -131,37 +122,56 @@ if portfolio is not None:
 
     portfolio, factors, rfr = resample(portfolio, factors)
     
-    # Ensure frequency is preserved for ftk.beta (subtraction can strip it)
-    excess_returns = portfolio - rfr
-    if portfolio.index.freqstr:
-        try:
-            excess_returns.index.freq = portfolio.index.freq
-        except:
-            pass
-    if factors.index.freqstr is None:
-        try:
-            factors.index.freq = pd.infer_freq(factors.index) if pd.infer_freq(factors.index) else 'B'
-        except:
-            pass
-            
+    if portfolio.empty or factors.empty:
+        st.error("No overlapping historical data found between the portfolio and the selected factor dataset. Please try a different factor model or ticker.")
+        st.stop()
+        
+    # Sanitizing Data: Replace inf with NaN and then drop all NaNs to prevent RuntimeWarnings in statsmodels
+    def sanitize_math(ds):
+        import numpy as np # Local import for robustness
+        return ds.replace([np.inf, -np.inf], np.nan).dropna()
+
+    excess_returns = sanitize_math(portfolio - rfr)
+    factors = sanitize_math(factors).reindex(excess_returns.index).dropna()
+    # Keep only the rows where BOTH excess_returns and factors have valid data
+    excess_returns = excess_returns.reindex(factors.index).dropna()
+    factors = factors.reindex(excess_returns.index).dropna()
+
+    # Align portfolio and rfr to the same index as excess_returns/factors
+    # Without this, pd.concat fills missing rows with NaN → only one line shows on chart
+    portfolio_aligned = portfolio.reindex(excess_returns.index)
+    rfr_aligned = rfr.reindex(excess_returns.index)
+
     betas = ftk.beta(excess_returns, factors)
 
-    attribution = pd.concat([betas * factors, rfr], axis=1)
+    attribution = pd.concat([betas * factors, rfr_aligned], axis=1)
     explained = attribution.sum(axis=1)
-    combined = pd.concat([portfolio, explained], axis=1)
+    combined = pd.concat([portfolio_aligned, explained], axis=1).dropna()
     combined.columns = ['Portfolio', 'Factors']
+    # Safely handle the attribution and contribution calculation
+    # k is the Carino attribution factor to convert arithmetic returns to geometric components
+    try:
+        total_return = ftk.compound_return(portfolio_aligned)
+        cf = ftk.carino(portfolio_aligned, 0)
+        tf = ftk.carino(total_return, 0)
+        # Avoid division by zero in Carino transformation
+        k = (attribution.T * cf).T / tf if tf != 0 else attribution
+        contribution = k.sum()
+    except:
+        total_return = ftk.compound_return(portfolio_aligned)
+        contribution = attribution.sum()
 
-    total_return = ftk.compound_return(portfolio)
-    k = (attribution.T * ftk.carino(portfolio, 0)).T / \
-        ftk.carino(total_return, 0)
-    contribution = k.sum().sort_values(ascending=False)
+    # Create the result summary table
+    summary_df = pd.DataFrame({
+        'Beta': [np.nan, np.nan],
+        'Contribution': [total_return - contribution.sum(), total_return]
+    }, index=['Unexplained', 'Total'])
 
-    summary = pd.DataFrame({'Beta': {'Unexplained': None, 'Total': None},
-                            'Contribution': {'Unexplained': total_return - contribution.sum(), 'Total': total_return}})
-
-    table = pd.concat([betas, contribution], axis=1)
-    table.columns = ['Beta', 'Contribution']
-    table = pd.concat([table, summary])
+    # Combine statistical betas with contribution percentages
+    table = pd.concat([betas.to_frame('Beta'), contribution.to_frame('Contribution')], axis=1)
+    
+    # Fix FutureWarning by ensuring consistent column structure for concatenation
+    table = pd.concat([table, summary_df])
     table['Contribution'] = table['Contribution'] * 100
 
     table = table.rename(index={'Mkt-RF': 'Market returns above risk-free rate (Mkt-RF)',
@@ -175,12 +185,12 @@ if portfolio is not None:
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric('Portfolio Ann. Return',
-                f'{ftk.compound_return(portfolio, annualize=True):.2%}')
+                f'{ftk.compound_return(portfolio_aligned, annualize=True):.2%}')
     col2.metric('Factor Ann. Return',
                 f'{ftk.compound_return(explained, annualize=True):.2%}')
-    col3.metric('R-Squared', f'{ftk.rsquared(portfolio - rfr, factors):.2%}')
+    col3.metric('R-Squared', f'{ftk.rsquared(excess_returns, factors):.2%}')
     col4.metric('Adj. R-Squared',
-                f'{ftk.rsquared(portfolio - rfr, factors, adjusted=True):.2%}')
+                f'{ftk.rsquared(excess_returns, factors, adjusted=True):.2%}')
 
     st.dataframe(table,
                  column_config={
@@ -193,7 +203,11 @@ if portfolio is not None:
                          format='%.1f'
                      ),
                  },)
-    st.line_chart(ftk.return_to_price(combined))
+    # return_to_price needs PeriodIndex with freq intact — do NOT convert before calling it.
+    # It internally calls .to_timestamp() and uses .freq. Convert only the output.
+    chart_data = ftk.return_to_price(combined)
+    chart_data = chart_data.replace([np.inf, -np.inf], np.nan).dropna()
+    st.line_chart(chart_data)
 else:
     st.write(
         'Please search a ticker in the box above (e.g. `SPY`, `QQQ`, `ARKK`, `BRK-B`) to get started.')
